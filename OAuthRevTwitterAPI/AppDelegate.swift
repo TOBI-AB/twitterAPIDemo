@@ -7,12 +7,15 @@
 //
 
 import UIKit
+import OAuthCore
+import Accounts
+
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
-
+    
 
     func application(application: UIApplication, didFinishLaunchingWithOptions launchOptions: [NSObject: AnyObject]?) -> Bool {
         // Override point for customization after application launch.
@@ -41,6 +44,72 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
 
+    func application(app: UIApplication, openURL url: NSURL, options: [String : AnyObject]) -> Bool {
+        guard let urlQuery = url.query where !urlQuery.isEqual(NSNull) else {
+            return false
+        }
+        
+        if let oAuthTokenDict = urlQuery.transformToDictionary  {
+            verifyAccessToken(from: oAuthTokenDict)
+        }
+      
+        return true
+    }
 
 }
+
+// MARK: - Helpers
+extension AppDelegate {
+    func verifyAccessToken(from accessTokenDict: Dictionary<String, AnyObject>) {
+        
+        guard let oauthToken = accessTokenDict["oauth_token"] as? String, oauthVerifier = accessTokenDict["oauth_verifier"] as? String else {
+            return
+        }
+        
+        guard let accessTokenURL = NSURL(string: TwitterAPIURLS.accessTokenURLPath, relativeToURL: TwitterAPIURLS.base)?.absoluteURL else {
+            return
+        }
+        
+        var oAuthorizationHeaderString = OAuthorizationHeader(accessTokenURL, "POST", nil, TwitterAPIKeys.consumerKey, TwitterAPIKeys.consumerSecret, oauthToken, nil)
+        let encodedOAuthVerifier = oauthVerifier.stringByAddingPercentEncodingForRFC3986()!
+        oAuthorizationHeaderString = oAuthorizationHeaderString.stringByAppendingFormat(", oauth_verifier=\(encodedOAuthVerifier)")
+        
+        let verifyAccessTokenRequest = NSURLRequest.httpRequest(accessTokenURL, method: "POST", header: ["Authorization": oAuthorizationHeaderString])
+     
+        NSURLSession.sharedSession().sendHttRequest(verifyAccessTokenRequest) { (data, error) in
+            guard let string = String(data: data, encoding: NSUTF8StringEncoding) else {
+                return
+            }
+            
+            guard let OAuthToken = string.transformToDictionary?["oauth_token"] as? String,  OAuthTokenSecret = string.transformToDictionary?["oauth_token_secret"] as? String else {
+                return
+            }
+            
+            let twitterAccountCredential = TwitterAccountCredential(OAuthToken: OAuthToken, OAuthTokenSecret: OAuthTokenSecret)
+            NSNotificationCenter.defaultCenter().postNotificationName("twitterAccountCredential", object: self, userInfo: ["credential": twitterAccountCredential])
+        }
+        
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
